@@ -1,0 +1,91 @@
+---
+title: "T2D complications — figure report"
+subtitle: "Prevalence, laboratory associations, biomarker ROC and logistic regression"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    df_print: paged
+params:
+  data_path: ""     # ruta a un RDS limpio; vacío = autodetectar (real -> demo)
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.width = 8, fig.height = 5, dpi = 110)
+root <- normalizePath(file.path(getwd(), ".."), mustWork = FALSE)
+if (!file.exists(file.path(root, "config.R"))) root <- getwd()
+source(file.path(root, "R", "load_data.R")); source(file.path(root, "R", "plots.R"))
+if (nzchar(params$data_path)) Sys.setenv(TD2_APP_DATA = params$data_path)
+dat <- load_td2_data(root); df <- dat$data
+```
+
+```{r banner, results='asis', echo=FALSE}
+if (dat$synthetic) cat("> **Synthetic demo data.** Values are randomly generated, not patients; nothing here has clinical meaning. Knit again after running `01_limpieza.R` on the real dataset to produce the real report (do not publish it without ethics/data-governance approval).\n")
+```
+
+Source: `r basename(dat$path)` — n = `r nrow(df)` patients. Generated `r format(Sys.Date())` with `r R.version.string`.
+
+## 1. Prevalence
+
+```{r prev}
+plot_prevalence(df)
+knitr::kable(prevalence_table(df)[, c("label", "n", "N", "pct", "lo", "hi")], digits = 1,
+             col.names = c("Condition", "n", "N", "%", "95% CI low", "95% CI high"))
+```
+
+## 2. Population
+
+```{r pop}
+plot_age_pyramid(df)
+plot_bmi_by_sex(df)
+plot_ckd_stages(df)
+```
+
+## 3. Complications
+
+```{r comp}
+plot_complications_by_sex(df)
+plot_burden(df)
+```
+
+## 4. Laboratory associations
+
+```{r labs, fig.width=6.5}
+plot_lab_by_outcome(df, "TFG_CKD_EPI", "ERC")
+plot_lab_by_outcome(df, "Acido_Urico", "ERC")
+plot_lab_by_outcome(df, "Glucosa", "Retinopatia")
+```
+
+```{r cor, fig.height=7, fig.width=9}
+plot_corr_heatmap(df)
+```
+
+## 5. Biomarker ROC
+
+```{r roc, fig.height=6}
+for (o in roc_outcomes) print(plot_roc_multi(df, o))
+plot_auc_heatmap(df)
+```
+
+```{r roctab}
+rt <- roc_table(df)
+knitr::kable(dplyr::transmute(rt, Biomarker = unname(lab_dict[biomarker]), Complication = unname(outcome_dict[outcome]),
+  AUC = round(auc, 3), `95% CI` = sprintf("%.3f–%.3f", lo, hi), Cutoff = round(cutoff, 2),
+  Sens = round(sens, 3), Spec = round(spec, 3), Interpretation = interpretation))
+```
+
+## 6. Logistic regression (backward AIC)
+
+```{r reg, fig.height=4}
+for (o in reg_outcomes) {
+  f <- fit_logistic(df, o)
+  print(plot_forest(f, paste("Predictors of", tolower(unname(outcome_dict[o])))))
+}
+```
+
+## Session info
+
+```{r si}
+sessionInfo()
+```
